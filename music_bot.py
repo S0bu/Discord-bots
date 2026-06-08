@@ -49,6 +49,8 @@ class MusicPlayer:
         self.next_event = asyncio.Event()
         self.is_moving_back = False 
         self.is_switching = False  # Prevents overlapping stream loads during batch operations
+        self.repeat_one = False
+        self.repeat_all = False
 
         self.bot.loop.create_task(self.player_loop())
 
@@ -85,6 +87,11 @@ class MusicPlayer:
             await self._channel.send(f'**Now playing:** {track_to_play.title}')
             
             await self.next_event.wait()
+
+            if self.repeat_one:
+                self.queue.appendleft(self.current)
+            elif self.repeat_all:
+                self.queue.append(self.current)
 
 class YTDLSource(discord.PCMVolumeTransformer):
     def __init__(self, source, *, data, volume=0.5):
@@ -215,6 +222,40 @@ class Music(commands.Cog):
         embed = discord.Embed(title="Active Music Timeline", description=current_str + (queue_str if queue_str else "*No upcoming tracks queued.*"), color=discord.Color.blurple())
         await ctx.send(embed=embed)
 
+    @commands.command(name="repeat")
+    async def repeat(self, ctx, mode: str = None):
+        """
+        !repeat off  -> disable repeat
+        !repeat one  -> repeat current track
+        !repeat all  -> loop queue
+        """
+        player = self.get_player(ctx)
+
+        if mode is None:
+            status = (
+                "off"
+                if not player.repeat_one and not player.repeat_all
+                else "one" if player.repeat_one
+                else "all"
+            )
+            return await ctx.send(f"Repeat mode is currently: **{status}**")
+
+        mode = mode.lower()
+        if mode == "off":
+            player.repeat_one = False
+            player.repeat_all = False
+            await ctx.send("Repeat mode **disabled**.")
+        elif mode == "one":
+            player.repeat_one = True
+            player.repeat_all = False
+            await ctx.send("Repeat mode set to: **repeat current track**.")
+        elif mode == "all":
+            player.repeat_one = False
+            player.repeat_all = True
+            await ctx.send("Repeat mode set to: **loop queue**.")
+        else:
+            await ctx.send("Invalid mode. Use `!repeat off`, `!repeat one`, or `!repeat all`.")
+    
     @commands.command(name='stop')
     async def stop(self, ctx):
         await self.cleanup(ctx.guild)
